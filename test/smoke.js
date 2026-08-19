@@ -20,7 +20,11 @@ import { WebsocketProvider } from 'y-websocket';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 41234;
-const URL_WS = `ws://localhost:${PORT}/ws`;
+// 127.0.0.1, never "localhost": CI runners resolve localhost to ::1 first, and a
+// client that keeps retrying an IPv6 address the relay never bound to hangs the
+// whole suite instead of failing.
+const HOST = '127.0.0.1';
+const URL_WS = `ws://${HOST}:${PORT}/ws`;
 const DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'echo-test-'));
 
 let server;
@@ -51,12 +55,12 @@ const settle = (ms = 250) => new Promise((r) => setTimeout(r, ms));
 before(async () => {
   server = spawn(process.execPath, ['server/index.js'], {
     cwd: ROOT,
-    env: { ...process.env, PORT: String(PORT), DATA_DIR, PERSIST_DEBOUNCE: '50' },
+    env: { ...process.env, PORT: String(PORT), HOST, DATA_DIR, PERSIST_DEBOUNCE: '50' },
     stdio: 'ignore',
   });
   for (let i = 0; i < 100; i += 1) {
     try {
-      const res = await fetch(`http://localhost:${PORT}/healthz`);
+      const res = await fetch(`http://${HOST}:${PORT}/healthz`);
       if (res.ok) return;
     } catch { /* not up yet */ }
     await settle(50);
@@ -175,7 +179,7 @@ test('a client recovers when the relay restarts under it', async () => {
   await settle(300);
   server = spawn(process.execPath, ['server/index.js'], {
     cwd: ROOT,
-    env: { ...process.env, PORT: String(PORT), DATA_DIR, PERSIST_DEBOUNCE: '50' },
+    env: { ...process.env, PORT: String(PORT), HOST, DATA_DIR, PERSIST_DEBOUNCE: '50' },
     stdio: 'ignore',
   });
 
@@ -197,7 +201,7 @@ test('a client recovers when the relay restarts under it', async () => {
 test('metrics report live rooms and connections', async () => {
   const a = client('metrics-room', 'A');
   await synced(a);
-  const m = await (await fetch(`http://localhost:${PORT}/metrics`)).json();
+  const m = await (await fetch(`http://${HOST}:${PORT}/metrics`)).json();
   assert.ok(m.ok);
   assert.ok(m.connections >= 1);
   assert.ok(m.rooms >= 1);

@@ -10,7 +10,7 @@
     "start": "vite build && node --disable-warning=ExperimentalWarning server/index.js",
     "serve": "node --disable-warning=ExperimentalWarning server/index.js",
     "bench": "node --disable-warning=ExperimentalWarning bench/load.js",
-    "test": "node --disable-warning=ExperimentalWarning --test test/*.js",
+    "test": "node --disable-warning=ExperimentalWarning --test --test-timeout=60000 test/*.js",
     "build:pages": "VITE_RELAY=wss://demos.yjs.dev/ws vite build"
   },
   "dependencies": {
