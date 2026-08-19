@@ -11,6 +11,7 @@
  */
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
+import WebSocketImpl from 'ws';
 
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -33,7 +34,7 @@ const ms = (n) => `${n.toFixed(2)} ms`;
 
 const make = (name) => {
   const doc = new Y.Doc();
-  const provider = new WebsocketProvider(URL_WS, ROOM, doc, { disableBc: true });
+  const provider = new WebsocketProvider(URL_WS, ROOM, doc, { disableBc: true, WebSocketPolyfill: WebSocketImpl });
   provider.awareness.setLocalStateField('user', { name, color: '#4fd1c5' });
   return { doc, provider, text: doc.getText('content') };
 };

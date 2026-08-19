@@ -129,44 +129,59 @@ undoManager.addTrackedOrigin(syncConfig.constructor);
 const peersEl = document.getElementById('peers');
 const peerCountEl = document.getElementById('peer-count');
 
-const renderPeers = () => {
-  const states = [...awareness.getStates().entries()];
-  peersEl.replaceChildren(
-    ...states
-      .filter(([, state]) => state.user)
-      .sort(([a], [b]) => (a === awareness.clientID ? -1 : b === awareness.clientID ? 1 : a - b))
-      .map(([clientId, state]) => {
-        const me = clientId === awareness.clientID;
-        const chip = document.createElement('button');
-        chip.className = `peer${me ? ' me' : ''}${state.typing ? ' typing' : ''}`;
-        chip.style.setProperty('--peer', state.user.color);
-        chip.title = me ? 'Click to rename yourself' : `Jump to ${state.user.name}'s cursor`;
-        chip.addEventListener('click', me ? rename : () => jumpTo(state));
-        const dot = document.createElement('i');
-        const label = document.createElement('span');
-        label.textContent = me ? `${state.user.name} (you)` : state.user.name;
-        chip.append(dot, label);
-        return chip;
-      }),
-  );
-  const n = states.filter(([, s]) => s.user).length;
-  peerCountEl.textContent = n === 1 ? '1 here' : `${n} here`;
-};
+// Chips are diffed in place, never rebuilt. Awareness fires on every keystroke
+// (cursor, typing flag, latency ping), and replacing the nodes each time
+// restarts their entry animation — which reads as the whole row flickering.
+const chips = new Map();
 
-/** Scroll to where a peer is working, using the cursor they publish. */
-const jumpTo = (state) => {
-  const anchor = state.cursor?.anchor;
-  if (!anchor) return toast('That window has no cursor in the document');
-  const pos = Y.createAbsolutePositionFromRelativePosition(
-    Y.createRelativePositionFromJSON(anchor),
-    doc,
-  );
-  if (!pos) return;
-  view.dispatch({
-    selection: { anchor: Math.min(pos.index, view.state.doc.length) },
-    effects: EditorView.scrollIntoView(Math.min(pos.index, view.state.doc.length), { y: 'center' }),
+const renderPeers = () => {
+  const states = [...awareness.getStates().entries()].filter(([, state]) => state.user);
+  const order = states
+    .map(([id]) => id)
+    .sort((a, b) => (a === awareness.clientID ? -1 : b === awareness.clientID ? 1 : a - b));
+
+  for (const [id, chip] of chips) {
+    if (!states.some(([other]) => other === id)) {
+      chip.remove();
+      chips.delete(id);
+    }
+  }
+
+  for (const clientId of order) {
+    const state = awareness.getStates().get(clientId);
+    const me = clientId === awareness.clientID;
+    let chip = chips.get(clientId);
+
+    if (!chip) {
+      chip = document.createElement('button');
+      chip.className = 'peer';
+      chip.append(document.createElement('i'), document.createElement('span'));
+      chip.addEventListener('click', () => {
+        if (clientId === awareness.clientID) return rename();
+        jumpTo(awareness.getStates().get(clientId));
+      });
+      chips.set(clientId, chip);
+      peersEl.append(chip);
+    }
+
+    const label = me ? `${state.user.name} (you)` : state.user.name;
+    if (chip.lastChild.textContent !== label) chip.lastChild.textContent = label;
+    if (chip.style.getPropertyValue('--peer') !== state.user.color) {
+      chip.style.setProperty('--peer', state.user.color);
+    }
+    chip.classList.toggle('me', me);
+    chip.classList.toggle('typing', Boolean(state.typing));
+    const title = me ? 'Click to rename yourself' : `Jump to ${state.user.name}'s cursor`;
+    if (chip.title !== title) chip.title = title;
+  }
+
+  // Reorder only when the order actually changed, so nothing is detached for free.
+  order.forEach((clientId, index) => {
+    const chip = chips.get(clientId);
+    if (peersEl.children[index] !== chip) peersEl.insertBefore(chip, peersEl.children[index] ?? null);
   });
-  view.focus();
+
+  peerCountEl.textContent = states.length === 1 ? '1 here' : `${states.length} here`;
 };
 
 const rename = () => {

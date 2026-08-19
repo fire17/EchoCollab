@@ -17,6 +17,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
+// Node's own global WebSocket is young: on Node 22 a refused connection can end
+// y-websocket's retry chain, so a client never returns after the relay restarts.
+// The `ws` implementation the relay already depends on behaves consistently.
+import WebSocketImpl from 'ws';
+// Node's own global WebSocket is young: on Node 22 a refused connection can end
+// the retry chain, so a client never comes back after the relay restarts. The
+// `ws` implementation the relay already depends on behaves consistently.
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 41234;
@@ -31,7 +38,7 @@ let server;
 
 const client = (room, name) => {
   const doc = new Y.Doc();
-  const provider = new WebsocketProvider(URL_WS, room, doc, { disableBc: true });
+  const provider = new WebsocketProvider(URL_WS, room, doc, { disableBc: true, WebSocketPolyfill: WebSocketImpl });
   provider.awareness.setLocalStateField('user', { name, color: '#4fd1c5' });
   return { doc, provider, text: doc.getText('content') };
 };
