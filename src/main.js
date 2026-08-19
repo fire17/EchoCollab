@@ -62,8 +62,11 @@ const text = doc.getText('content');
 new IndexeddbPersistence(`echo:${room}`, doc);
 
 // Peer to peer needs no server; a relay is used only when one was asked for.
+// ?wire=floor forces the relay floor (for a network where WebRTC cannot cross);
+// ?wire=webrtc forces direct only. Default races both.
+const wire = new URLSearchParams(location.search).get('wire');
 const provider = transport.kind === 'p2p'
-  ? new P2pProvider(room, doc)
+  ? new P2pProvider(room, doc, { useMesh: wire !== 'floor', useFloor: wire !== 'webrtc' })
   : new WebsocketProvider(transport.url, transport.docName(room), doc, {
     maxBackoffTime: 2500,
     // Against our own relay the browser gossip channel is off, so the demo

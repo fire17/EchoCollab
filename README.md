@@ -101,13 +101,16 @@ flowchart LR
   style BC fill:#1a1030,stroke:#e8b84a,color:#f5d67b
 ```
 
-### Peer to peer, in three files
+### Peer to peer, built on [fire17/p2p](https://github.com/fire17/p2p)
 
 | | |
 |---|---|
 | [`src/p2p/tracker.js`](src/p2p/tracker.js) | Signalling over public WSS trackers — announce, offer, answer. The pool and wire format are p2p's, re-probed live (its third tracker had since died and was dropped). |
-| [`src/p2p/mesh.js`](src/p2p/mesh.js) | A full mesh of WebRTC DataChannels: ICE against free public STUN, 16 KB chunking, and a glare rule both sides evaluate identically. |
-| [`src/p2p/provider.js`](src/p2p/provider.js) | The same sync + awareness protocol the relay speaks, over the mesh instead of through a middle — so the editor cannot tell which transport it has. |
+| [`src/p2p/mesh.js`](src/p2p/mesh.js) | A full mesh of WebRTC DataChannels: ICE against free public STUN, p2p's 16 KB chunking, and a glare rule both sides evaluate identically. |
+| [`src/p2p/floor.js`](src/p2p/floor.js) | **The NAT-proof floor**, imported from `@fire17/p2p/transport-wss`: room frames over public MQTT-over-WSS brokers, for the symmetric-NAT pairs WebRTC cannot cross. Both sides dial *out*, so it traverses every NAT — the fix for "I switched WiFi and stopped connecting". Frames are AES-GCM sealed under a room-derived key; the broker sees an opaque p2p topic and ciphertext. Batched to one frame per 80 ms window, because public brokers rate-limit per-keystroke publishers (observed live: 3 characters arrived, 33 did not). |
+| [`src/p2p/provider.js`](src/p2p/provider.js) | The same sync + awareness protocol the relay speaks, racing all three paths — BroadcastChannel, WebRTC, floor — so the editor cannot tell which transport it has. |
+
+`?wire=floor` forces the broker path; `?wire=webrtc` forces direct-only. The peer inspector names whichever path is actually carrying a peer's traffic.
 
 ### And a relay, if you want one
 
@@ -128,6 +131,7 @@ Three deliberate choices, all in [`server/`](server):
 | Two windows of one browser meet | **138 ms** (BroadcastChannel, no network involved) |
 | A separate browser profile meets | **5.2 s** (tracker rendezvous + ICE, first contact) |
 | Round trip once connected | **1.3 ms** |
+| Floor only (`?wire=floor`, the worst-NAT case) | synced through a public broker; **~306 ms** round trip |
 | Three peers, all typing | converged on an identical document |
 | One peer offline, both typing, back online | isolated while offline, merged on return, nothing lost |
 

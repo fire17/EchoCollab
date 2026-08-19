@@ -3,7 +3,7 @@
   "version": "1.2.0",
   "private": true,
   "type": "module",
-  "description": "Realtime collaborative editing demo \u2014 two windows, one CRDT document, live coloured carets.",
+  "description": "Realtime collaborative editing demo — two windows, one CRDT document, live coloured carets.",
   "scripts": {
     "dev": "concurrently -k -n relay,vite -c magenta,cyan \"node --disable-warning=ExperimentalWarning server/index.js\" \"vite\"",
     "build": "VITE_SELF_HOSTED=1 vite build",
@@ -21,6 +21,7 @@
     "@codemirror/search": "^6.7.1",
     "@codemirror/state": "^6.7.1",
     "@codemirror/view": "^6.43.9",
+    "@fire17/p2p": "github:fire17/p2p",
     "codemirror": "^6.0.2",
     "lib0": "^0.2.117",
     "ws": "^8.21.3",

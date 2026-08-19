@@ -13,17 +13,25 @@ import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
 import { Observable } from 'lib0/observable';
 import { createMesh } from './mesh.js';
+import { joinFloor } from './floor.js';
 
 const MESSAGE_SYNC = 0;
 const MESSAGE_AWARENESS = 1;
 
 export class P2pProvider extends Observable {
-  constructor(room, doc, { awareness = new awarenessProtocol.Awareness(doc), connect = true } = {}) {
+  constructor(room, doc, { awareness = new awarenessProtocol.Awareness(doc), connect = true, useMesh = true, useFloor = true } = {}) {
     super();
     this.room = room;
     this.doc = doc;
     this.awareness = awareness;
     this.mesh = null;
+    // The floor: p2p's universal fallback. WebRTC cannot cross a symmetric-NAT
+    // pair, and that is precisely the case where two windows on different
+    // networks would otherwise never meet.
+    this.floor = null;
+    this.floorPeers = new Set();
+    this.useMesh = useMesh;
+    this.useFloor = useFloor;
     // Windows of the same browser sync directly, without waiting on a tracker
     // round trip or an ICE handshake — the two-window demo is instant, and it
     // still works with the network unplugged.
@@ -34,15 +42,28 @@ export class P2pProvider extends Observable {
     this.synced = false;
     this.shouldConnect = connect;
 
+    // Floor traffic is batched: a public MQTT broker rate-limits publishers, and
+    // per-keystroke publishes get a fast typist silently dropped (observed live —
+    // 3 characters arrived, 33 did not). Yjs updates merge losslessly, so a
+    // window's worth becomes one frame. Direct paths stay per-keystroke.
+    this._floorQueue = [];
+    this._floorTimer = null;
+
     this._onUpdate = (update, origin) => {
       // Anything that arrived from a peer is already on its way to the others.
       if (origin === this) return;
       const encoder = encoding.createEncoder();
       encoding.writeVarUint(encoder, MESSAGE_SYNC);
       syncProtocol.writeUpdate(encoder, update);
-      this._broadcast(encoding.toUint8Array(encoder));
+      this.mesh?.broadcast(encoding.toUint8Array(encoder));
+      try { this.bc?.postMessage(encoding.toUint8Array(encoder)); } catch { /* closed */ }
+      if (this.floor) {
+        this._floorQueue.push(update);
+        this._floorTimer ??= setTimeout(() => this._flushFloor(), 80);
+      }
     };
 
+    this._floorAwareness = false;
     this._onAwareness = ({ added, updated, removed }) => {
       const changed = added.concat(updated, removed);
       const encoder = encoding.createEncoder();
@@ -51,7 +72,14 @@ export class P2pProvider extends Observable {
         encoder,
         awarenessProtocol.encodeAwarenessUpdate(this.awareness, changed),
       );
-      this._broadcast(encoding.toUint8Array(encoder));
+      this.mesh?.broadcast(encoding.toUint8Array(encoder));
+      try { this.bc?.postMessage(encoding.toUint8Array(encoder)); } catch { /* closed */ }
+      if (this.floor) {
+        // Presence is a snapshot, not a log — only the latest state matters, so
+        // the flush re-encodes it rather than queueing every intermediate one.
+        this._floorAwareness = true;
+        this._floorTimer ??= setTimeout(() => this._flushFloor(), 80);
+      }
     };
 
     this._onUnload = () => {
@@ -66,10 +94,30 @@ export class P2pProvider extends Observable {
     if (connect) this.connect();
   }
 
-  /** Out to every direct peer, and to the other windows of this browser. */
-  _broadcast(bytes) {
-    this.mesh?.broadcast(bytes);
-    try { this.bc?.postMessage(bytes); } catch { /* channel closed */ }
+  /** One flush window's worth of floor traffic, as at most two frames. */
+  _flushFloor() {
+    this._floorTimer = null;
+    if (!this.floor) { this._floorQueue = []; this._floorAwareness = false; return; }
+    if (this._floorQueue.length) {
+      const merged = this._floorQueue.length === 1
+        ? this._floorQueue[0]
+        : Y.mergeUpdates(this._floorQueue);
+      this._floorQueue = [];
+      const encoder = encoding.createEncoder();
+      encoding.writeVarUint(encoder, MESSAGE_SYNC);
+      syncProtocol.writeUpdate(encoder, merged);
+      this.floor.send(encoding.toUint8Array(encoder));
+    }
+    if (this._floorAwareness) {
+      this._floorAwareness = false;
+      const encoder = encoding.createEncoder();
+      encoding.writeVarUint(encoder, MESSAGE_AWARENESS);
+      encoding.writeVarUint8Array(
+        encoder,
+        awarenessProtocol.encodeAwarenessUpdate(this.awareness, [...this.awareness.getStates().keys()]),
+      );
+      this.floor.send(encoding.toUint8Array(encoder));
+    }
   }
 
   _handle(peer, bytes) {
@@ -127,7 +175,37 @@ export class P2pProvider extends Observable {
     hello();
     this._greet(local);
 
+    if (this.useFloor) {
+      try {
+        const selfId = this.doc.clientID;
+        this.floor = await joinFloor({
+          room: this.room,
+          selfId,
+          onFrame: (from, bytes) => {
+            const known = this.floorPeers.has(from);
+            if (!known) {
+              this.floorPeers.add(from);
+              this.emit('status', [{ status: 'connected' }]);
+              this.emit('peers', [{ peers: this._reachable() }]);
+            }
+            const peer = { send: (out) => this.floor?.send(out) };
+            try {
+              this._handle(peer, bytes);
+              // A window we have just heard from for the first time needs our
+              // state vector, or neither side ever offers one.
+              if (!known) this._greet(peer);
+            } catch (err) { this.emit('connection-error', [err]); }
+          },
+          onStatus: ({ relays }) => this.emit('floor', [{ relays }]),
+        });
+        this._greet({ send: (out) => this.floor?.send(out) });
+      } catch (err) {
+        this.emit('connection-error', [err]);
+      }
+    }
+
     try {
+      if (!this.useMesh) return;
       this.mesh = await createMesh({
         room: this.room,
         selfId: this.doc.clientID,
@@ -145,10 +223,9 @@ export class P2pProvider extends Observable {
           if (!this.bcPeers.has(id)) {
             awarenessProtocol.removeAwarenessStates(this.awareness, [id], 'peer-left');
           }
-          const reachable = (this.mesh?.size ?? 0) + this.bcPeers.size;
-          this.emit('status', [{ status: reachable ? 'connected' : 'connecting' }]);
+          this.emit('status', [{ status: this._reachable() ? 'connected' : 'connecting' }]);
         },
-        onStatus: ({ peers }) => this.emit('peers', [{ peers: peers + this.bcPeers.size }]),
+        onStatus: () => this.emit('peers', [{ peers: this._reachable() }]),
       });
     } catch (err) {
       this.emit('connection-error', [err]);
@@ -169,9 +246,24 @@ export class P2pProvider extends Observable {
       return { path: 'broadcast', label: 'same browser', detail: 'BroadcastChannel — never leaves this machine', direct: true };
     }
     const peer = this.mesh?.get(clientId);
-    if (!peer) return { path: 'none', label: 'not connected', detail: 'no open channel to this window' };
+    if (!peer) {
+      if (this.floorPeers.has(clientId)) {
+        return {
+          path: 'floor',
+          label: 'via public relay (floor)',
+          detail: `MQTT-over-WSS relay from p2p — used when WebRTC cannot cross the NAT. Sealed with a key derived from the room name; the broker sees an opaque topic and ciphertext. ${this.floor?.relays ?? 0} relay(s) up.`,
+          direct: false,
+        };
+      }
+      return { path: 'none', label: 'not connected', detail: 'no open channel to this window' };
+    }
     const stats = await peer.stats();
     return { ...stats, label: stats.direct === false ? 'relayed WebRTC' : 'direct WebRTC', detail: 'WebRTC DataChannel, signalled over public trackers' };
+  }
+
+  /** Every window we can currently reach, by any path. */
+  _reachable() {
+    return (this.mesh?.size ?? 0) + this.bcPeers.size + this.floorPeers.size;
   }
 
   /** Opening move to anyone new: our state vector, then our presence. */
@@ -199,9 +291,16 @@ export class P2pProvider extends Observable {
     } catch { /* already closed */ }
     this.bc = null;
     this.bcPeers.clear();
-    if (!this.mesh) { this.emit('status', [{ status: 'disconnected' }]); return; }
+    if (!this.mesh && !this.floor) { this.emit('status', [{ status: 'disconnected' }]); return; }
     this.mesh.close();
     this.mesh = null;
+    // The floor: p2p's universal fallback. WebRTC cannot cross a symmetric-NAT
+    // pair, and that is precisely the case where two windows on different
+    // networks would otherwise never meet.
+    this.floor = null;
+    this.floorPeers = new Set();
+    this.useMesh = useMesh;
+    this.useFloor = useFloor;
     this.synced = false;
     // Everyone else's presence came over channels that are now gone.
     const others = [...this.awareness.getStates().keys()].filter((id) => id !== this.doc.clientID);

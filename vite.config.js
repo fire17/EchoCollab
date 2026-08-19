@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import { execSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import pkg from './package.json' with { type: 'json' };
 
 // Four segments so a running page names its exact deploy: the semver from
@@ -17,6 +18,17 @@ const SHA = (() => {
 const RELAY = process.env.RELAY || 'localhost:1234';
 
 export default defineConfig({
+  resolve: {
+    alias: [
+      // p2p's shared protocol source targets Node; its own browser client swaps
+      // node:crypto for a vendored shim through an import map. We are bundled,
+      // so the same swap happens here.
+      {
+        find: 'node:crypto',
+        replacement: fileURLToPath(new URL('./node_modules/@fire17/p2p/src/browser/shim/node-crypto.js', import.meta.url)),
+      },
+    ],
+  },
   define: {
     __APP_VERSION__: JSON.stringify(`${pkg.version}.${BUILD}`),
     __APP_SHA__: JSON.stringify(SHA),
