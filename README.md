@@ -185,6 +185,17 @@ Two more were found in the plan rather than the code: y-webrtc's public signalli
 > [!NOTE]
 > The published site uses a **public relay it does not own**. Anything typed on `dxos.akeyo.io` without `?relay=` travels through a shared server — fine for a demo, wrong for anything private. Run your own with one command.
 
+## 🚨 When something breaks, it says so
+
+An editor that quietly stops updating is the worst failure mode in a collaborative tool —
+it looks like it is working. Unreachable relays, dropped sockets and uncaught errors
+interrupt with the relay's host, the reassurance that local edits are safe, and a retry:
+
+<img src="assets/shot-error.png" width="100%" alt="ECHO showing a red banner: can't reach the relay, still retrying, edits are safe locally">
+
+The banner clears itself the moment the connection comes back — verified by killing the
+relay under a live browser and restarting it.
+
 ## ✅ How the claims are enforced
 
 Every push runs [`npm test`](test/smoke.js) in CI before the site is allowed to deploy: a real relay on its own port, real clients, and the properties this README promises — fresh rooms seeded, concurrent same-position edits converged, presence appearing and disappearing, an offline window losing nothing, a room surviving its last client, rooms isolated from each other, and **a client recovering after the relay is SIGKILLed under it**.
