@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ECHO — realtime collaborative editing</title>
+    <meta name="description" content="Two windows, one document. Conflict-free realtime editing with live colored carets." />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>✍️</text></svg>" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="bar">
+        <div class="brand">
+          <span class="mark" aria-hidden="true"></span>
+          <div>
+            <h1>ECHO</h1>
+            <p class="room">room <button id="room-name" class="room-btn" title="Click to switch room">—</button></p>
+          </div>
+        </div>
+
+        <div class="peers" id="peers" aria-live="polite" aria-label="People in this room"></div>
+
+        <div class="actions">
+          <button id="open-window" class="btn primary" title="Open a second window on the same document">Open 2nd window</button>
+          <button id="copy-link" class="btn" title="Copy the shareable room link">Copy link</button>
+          <button id="toggle-net" class="btn" title="Go offline to see conflict-free merge on reconnect">Go offline</button>
+        </div>
+      </header>
+
+      <main class="editor-wrap">
+        <div id="editor" class="editor"></div>
+        <div id="toast" class="toast" role="status" aria-live="polite"></div>
+      </main>
+
+      <footer class="status">
+        <span class="dot" id="conn-dot"></span>
+        <span id="conn-text">connecting…</span>
+        <span class="sep"></span>
+        <span id="latency" title="Round-trip time measured over the transport the edits actually use">waiting for a peer</span>
+        <span class="sep"></span>
+        <span id="transport">—</span>
+        <span class="sep"></span>
+        <span id="counts">0 chars · 0 words · 0 lines</span>
+        <span class="sep"></span>
+        <span id="peer-count">1 here</span>
+        <span class="grow"></span>
+        <a id="metrics-link" class="quiet" href="/metrics" target="_blank" rel="noreferrer">server metrics</a>
+      </footer>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

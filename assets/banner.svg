@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 340" width="1280" height="340" role="img" aria-label="ECHO — two windows, one document. Realtime collaborative editing with live coloured carets.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b0f1a"/>
+      <stop offset="55%" stop-color="#101a2e"/>
+      <stop offset="100%" stop-color="#141033"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#4fd1c5"/>
+      <stop offset="50%" stop-color="#a78bfa"/>
+      <stop offset="100%" stop-color="#ff5c8a"/>
+    </linearGradient>
+    <linearGradient id="fade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#4fd1c5" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#4fd1c5" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1280" height="340" fill="url(#bg)"/>
+
+  <!-- two window frames, one document: the left one's text is mirrored on the right -->
+  <g opacity="0.92">
+    <rect x="742" y="74" width="212" height="150" rx="10" fill="#0d131d" stroke="#243046"/>
+    <rect x="742" y="74" width="212" height="22" rx="10" fill="#131c2a"/>
+    <circle cx="757" cy="85" r="3.4" fill="#ff5c8a"/><circle cx="768" cy="85" r="3.4" fill="#f6ad55"/><circle cx="779" cy="85" r="3.4" fill="#4fd1c5"/>
+    <rect x="758" y="112" width="150" height="6" rx="3" fill="#2b3a52"/>
+    <rect x="758" y="130" width="118" height="6" rx="3" fill="#2b3a52"/>
+    <rect x="758" y="148" width="134" height="6" rx="3" fill="#2b3a52"/>
+    <rect x="758" y="166" width="86" height="6" rx="3" fill="#2b3a52"/>
+    <rect x="876" y="128" width="2.5" height="11" fill="#ff5c8a"/>
+    <rect x="866" y="114" width="34" height="11" rx="3" fill="#ff5c8a"/>
+
+    <rect x="986" y="112" width="212" height="150" rx="10" fill="#0d131d" stroke="#243046"/>
+    <rect x="986" y="112" width="212" height="22" rx="10" fill="#131c2a"/>
+    <circle cx="1001" cy="123" r="3.4" fill="#ff5c8a"/><circle cx="1012" cy="123" r="3.4" fill="#f6ad55"/><circle cx="1023" cy="123" r="3.4" fill="#4fd1c5"/>
+    <rect x="1002" y="150" width="150" height="6" rx="3" fill="#2b3a52"/>
+    <rect x="1002" y="168" width="118" height="6" rx="3" fill="#2b3a52"/>
+    <rect x="1002" y="186" width="134" height="6" rx="3" fill="#2b3a52"/>
+    <rect x="1002" y="204" width="86" height="6" rx="3" fill="#2b3a52"/>
+    <rect x="1120" y="166" width="2.5" height="11" fill="#4fd1c5"/>
+    <rect x="1110" y="152" width="38" height="11" rx="3" fill="#4fd1c5"/>
+
+    <!-- the shared edit travelling between them -->
+    <path d="M954 150 C 972 150, 968 188, 986 188" fill="none" stroke="url(#accent)" stroke-width="2" stroke-dasharray="5 5" opacity="0.85"/>
+  </g>
+
+  <text x="84" y="132" font-family="Verdana, Geneva, sans-serif" font-size="60" font-weight="bold" fill="#f2f6fc" letter-spacing="14">ECHO</text>
+  <rect x="86" y="152" width="300" height="3" fill="url(#accent)"/>
+  <text x="86" y="196" font-family="Georgia, 'Times New Roman', serif" font-size="25" font-style="italic" fill="#9fb7d4">Two windows. One document. Every caret its own colour.</text>
+  <text x="86" y="238" font-family="Verdana, Geneva, sans-serif" font-size="14.5" fill="#c9d6e8">Conflict-free realtime editing on a CRDT — offline windows merge, nothing locks, nothing is lost.</text>
+
+  <rect x="86" y="266" width="560" height="1" fill="url(#fade)"/>
+  <text x="86" y="296" font-family="Verdana, Geneva, sans-serif" font-size="12.5" font-weight="bold" fill="#6d86a6" letter-spacing="2.6">1000 CLIENTS CONVERGED · 0.44 ms p50 · 144-LINE RELAY · 9 E2E TESTS</text>
+</svg>

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.data/
+*.log
+.DS_Store
+
+# session checkpoint — private, never published
+conversation/
+.save_and_ship/
+CONTINUE.md
