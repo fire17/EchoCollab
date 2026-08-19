@@ -183,8 +183,16 @@ test('a client recovers when the relay restarts under it', async () => {
     stdio: 'ignore',
   });
 
+  // Wait for the new relay to actually be listening before judging the client:
+  // on a cold CI runner the respawn alone can outlast a few reconnect attempts.
+  for (let i = 0; i < 100; i += 1) {
+    try {
+      if ((await fetch(`http://${HOST}:${PORT}/healthz`)).ok) break;
+    } catch { /* not up yet */ }
+    await settle(100);
+  }
   // y-websocket backs off between attempts, so give it room to come back.
-  for (let i = 0; i < 60 && !a.provider.wsconnected; i += 1) await settle(100);
+  for (let i = 0; i < 300 && !a.provider.wsconnected; i += 1) await settle(100);
   assert.ok(a.provider.wsconnected, 'client should reconnect on its own');
 
   a.text.insert(0, 'AFTER-RESTART ');

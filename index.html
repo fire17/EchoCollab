@@ -28,6 +28,13 @@
         </div>
       </header>
 
+      <div id="alert" class="alert" role="alert" aria-live="assertive" hidden>
+        <span class="alert-mark" aria-hidden="true">!</span>
+        <span id="alert-text"></span>
+        <button id="alert-retry" class="alert-btn" type="button">Retry now</button>
+        <button id="alert-close" class="alert-btn quiet" type="button" aria-label="Dismiss">✕</button>
+      </div>
+
       <main class="editor-wrap">
         <div id="editor" class="editor"></div>
         <div id="toast" class="toast" role="status" aria-live="polite"></div>

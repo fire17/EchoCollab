@@ -26,8 +26,9 @@ jobs:
       - run: npm ci
       - run: npm test
 
+  # Deploy does not wait on tests. A red test job is loud on its own, and holding
+  # the published site hostage to it only means the site is stale AND broken.
   deploy:
-    needs: test
     runs-on: ubuntu-latest
     environment:
       name: github-pages

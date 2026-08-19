@@ -228,6 +228,51 @@ const toast = (message) => {
   toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2200);
 };
 
+// ---------------------------------------------------------------- error strip
+
+const alertEl = document.getElementById('alert');
+const alertText = document.getElementById('alert-text');
+let alertRetry = null;
+
+// Failures here are the ones a user cannot diagnose from an editor that simply
+// stops updating, so they get said out loud instead of only in the console.
+const showAlert = (message, retry = null) => {
+  alertText.textContent = message;
+  alertRetry = retry;
+  document.getElementById('alert-retry').hidden = !retry;
+  alertEl.hidden = false;
+};
+
+const hideAlert = () => { alertEl.hidden = true; alertRetry = null; };
+
+document.getElementById('alert-retry').addEventListener('click', () => {
+  const retry = alertRetry;
+  hideAlert();
+  retry?.();
+});
+document.getElementById('alert-close').addEventListener('click', hideAlert);
+
+let failures = 0;
+const reconnect = () => { provider.disconnect(); provider.connect(); };
+
+provider.on('connection-error', () => {
+  failures += 1;
+  // One dropped socket is normal; a pattern of them is worth interrupting for.
+  if (failures >= 2 && !offline) {
+    showAlert(`Can't reach the relay at ${transport.host} — still retrying. Your edits are safe locally and will merge when it returns.`, reconnect);
+  }
+});
+provider.on('status', ({ status }) => {
+  if (status === 'connected') { failures = 0; hideAlert(); }
+});
+
+addEventListener('error', (event) => {
+  showAlert(`Something broke: ${event.message || 'unknown error'} — reload if the editor stops responding.`);
+});
+addEventListener('unhandledrejection', (event) => {
+  showAlert(`Something broke: ${event.reason?.message || event.reason || 'unknown error'}`);
+});
+
 let offline = false;
 const setConn = (state) => {
   const label = offline ? 'offline (edits queued)' : state;
