@@ -53,6 +53,15 @@ const room = (location.hash.slice(1) || new URLSearchParams(location.search).get
   .slice(0, 128) || 'lobby';
 if (location.hash.slice(1) !== room) history.replaceState(null, '', `#${room}`);
 
+// The room is bound at load, so navigating to a new #hash on an already-open
+// page must swap rooms right then — not on whenever the user thinks to reload.
+// Everything is room-scoped (provider, editor binding, undo stack, seed), so a
+// reload IS the clean swap; this just makes it automatic and instant.
+addEventListener('hashchange', () => {
+  const next = location.hash.slice(1).replace(/[^\w.:-]/g, '');
+  if (next && next !== room) location.reload();
+});
+
 const identity = loadIdentity();
 
 const doc = new Y.Doc();
@@ -518,8 +527,8 @@ document.getElementById('room-name').textContent = room;
 document.getElementById('room-name').addEventListener('click', () => {
   const next = prompt('Room name', room)?.trim();
   if (!next || next === room) return;
+  // Setting the hash fires the hashchange listener above, which reloads.
   location.hash = next.replace(/[^\w.:-]/g, '');
-  location.reload();
 });
 
 document.getElementById('open-window').addEventListener('click', () => {
