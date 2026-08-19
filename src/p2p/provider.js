@@ -158,6 +158,22 @@ export class P2pProvider extends Observable {
     if (!this.shouldConnect) { this.mesh.close(); this.mesh = null; }
   }
 
+  /**
+   * How we are actually reaching one peer, for the inspector.
+   *
+   * A peer can be reachable two ways at once; report the one carrying traffic —
+   * the browser channel is the shorter path and wins when both exist.
+   */
+  async peerInfo(clientId) {
+    if (this.bcPeers.has(clientId)) {
+      return { path: 'broadcast', label: 'same browser', detail: 'BroadcastChannel — never leaves this machine', direct: true };
+    }
+    const peer = this.mesh?.get(clientId);
+    if (!peer) return { path: 'none', label: 'not connected', detail: 'no open channel to this window' };
+    const stats = await peer.stats();
+    return { ...stats, label: stats.direct === false ? 'relayed WebRTC' : 'direct WebRTC', detail: 'WebRTC DataChannel, signalled over public trackers' };
+  }
+
   /** Opening move to anyone new: our state vector, then our presence. */
   _greet(peer) {
     const sync = encoding.createEncoder();

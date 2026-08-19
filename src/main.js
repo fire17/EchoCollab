@@ -161,7 +161,7 @@ const renderPeers = () => {
       chip.append(document.createElement('i'), document.createElement('span'));
       chip.addEventListener('click', () => {
         if (clientId === awareness.clientID) return rename();
-        jumpTo(awareness.getStates().get(clientId));
+        openInspector(clientId);
       });
       chips.set(clientId, chip);
       peersEl.append(chip);
@@ -185,6 +185,28 @@ const renderPeers = () => {
   });
 
   peerCountEl.textContent = states.length === 1 ? '1 here' : `${states.length} here`;
+};
+
+/** Where a peer's cursor is, as a line:column in our copy of the document. */
+const cursorOf = (state) => {
+  const anchor = state?.cursor?.anchor;
+  if (!anchor) return null;
+  const pos = Y.createAbsolutePositionFromRelativePosition(Y.createRelativePositionFromJSON(anchor), doc);
+  if (!pos) return null;
+  const index = Math.min(pos.index, view.state.doc.length);
+  const line = view.state.doc.lineAt(index);
+  return { index, line: line.number, column: index - line.from + 1 };
+};
+
+/** Scroll to where a peer is working, using the cursor they publish. */
+const jumpTo = (state) => {
+  const at = cursorOf(state);
+  if (!at) return toast('That window has no cursor in the document');
+  view.dispatch({
+    selection: { anchor: at.index },
+    effects: EditorView.scrollIntoView(at.index, { y: 'center' }),
+  });
+  view.focus();
 };
 
 const rename = () => {
@@ -229,6 +251,91 @@ const markTyping = () => {
   clearTimeout(typingTimer);
   typingTimer = setTimeout(() => awareness.setLocalStateField('typing', false), 900);
 };
+
+// ----------------------------------------------------------------- inspector
+
+const inspectorEl = document.getElementById('inspector');
+const inspectorBody = document.getElementById('inspector-body');
+let inspecting = null;
+let inspectTimer = null;
+
+const bytes = (n) => {
+  if (typeof n !== 'number') return null;
+  if (n < 1024) return `${n} B`;
+  if (n < 1048576) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1048576).toFixed(2)} MB`;
+};
+
+const row = (term, value, tone) => {
+  if (value === null || value === undefined || value === '') return;
+  const dt = document.createElement('dt');
+  dt.textContent = term;
+  const dd = document.createElement('dd');
+  dd.textContent = String(value);
+  if (tone) dd.className = tone;
+  inspectorBody.append(dt, dd);
+};
+
+/**
+ * Everything we can honestly say about one peer and the link to them.
+ *
+ * Read live each refresh rather than cached: a connection can change path,
+ * stall, or drop while the panel is open, and a stale panel would be a lie.
+ */
+const renderInspector = async () => {
+  const state = awareness.getStates().get(inspecting);
+  if (!state) return closeInspector();
+
+  const info = await provider.peerInfo?.(inspecting)
+    ?? { path: 'relay', label: `via ${transport.host}`, detail: transport.ours ? 'your own relay' : 'relay' };
+
+  document.getElementById('inspector-name').textContent = state.user?.name ?? 'unknown';
+  document.getElementById('inspector-dot').style.background = state.user?.color ?? 'var(--accent)';
+  inspectorEl.style.setProperty('--peer', state.user?.color ?? 'var(--accent)');
+  inspectorBody.replaceChildren();
+
+  const at = cursorOf(state);
+  const rtt = rttByPeer.get(inspecting);
+
+  row('connection', info.label, info.path === 'none' ? 'warn' : 'good');
+  row('how', info.detail);
+  row('round trip', rtt ? `${rtt.toFixed(1)} ms (through the app)` : 'measuring…', rtt ? 'good' : null);
+  row('network rtt', typeof info.iceRttMs === 'number' ? `${info.iceRttMs.toFixed(1)} ms (ICE)` : null);
+  row('direct', info.direct === undefined ? null : (info.direct ? 'yes — no relay in between' : 'no — via a relay'), info.direct === false ? 'warn' : 'good');
+  row('protocol', info.protocol ? info.protocol.toUpperCase() : null);
+  row('path', info.localType && info.remoteType ? `${info.localType} → ${info.remoteType}` : null);
+  row('their address', info.remoteAddress);
+  row('sent / received', info.bytesSent !== undefined ? `${bytes(info.bytesSent)} / ${bytes(info.bytesReceived)}` : null);
+  row('channel', info.channel);
+  row('ice state', info.ice);
+  row('who dialled', info.initiator === undefined ? null : (info.initiator ? 'we did' : 'they did'));
+  row('colour', state.user?.color);
+  row('client id', inspecting);
+  row('typing', state.typing ? 'yes, right now' : 'no');
+  row('cursor', at ? `line ${at.line}, column ${at.column}` : 'not in the document');
+  row('room', room);
+};
+
+const closeInspector = () => {
+  clearInterval(inspectTimer);
+  inspectTimer = null;
+  inspecting = null;
+  inspectorEl.hidden = true;
+};
+
+const openInspector = (clientId) => {
+  inspecting = clientId;
+  inspectorEl.hidden = false;
+  renderInspector();
+  clearInterval(inspectTimer);
+  inspectTimer = setInterval(renderInspector, 1000);
+};
+
+document.getElementById('inspector-close').addEventListener('click', closeInspector);
+document.getElementById('inspector-jump').addEventListener('click', () => {
+  jumpTo(awareness.getStates().get(inspecting));
+});
+addEventListener('keydown', (event) => { if (event.key === 'Escape' && inspecting !== null) closeInspector(); });
 
 // -------------------------------------------------------------------- status
 
@@ -333,8 +440,10 @@ updateCounts();
 // gets its timers throttled by the browser, and one such sample would drag an
 // average for a minute while the median shrugs it off.
 const recentRtt = [];
+const rttByPeer = new Map();
 let bestRtt = Infinity;
-startPulse(awareness, (rtt) => {
+startPulse(awareness, (rtt, byPeer) => {
+  if (byPeer) for (const [id, value] of byPeer) rttByPeer.set(id, value);
   if (rtt === null) {
     latencyEl.textContent = awareness.getStates().size > 1 ? 'rtt paused (busy room)' : 'waiting for a peer';
     return;
@@ -346,16 +455,42 @@ startPulse(awareness, (rtt) => {
   latencyEl.textContent = `${median.toFixed(1)} ms rtt · best ${bestRtt.toFixed(1)}`;
 });
 
+// Which wiring is in use, said once at the top and once in the status bar —
+// this is the thing most worth knowing about the page and it should never take
+// a click to find out.
 const transportEl = document.getElementById('transport');
-if (transport.kind === 'p2p') {
-  transportEl.textContent = 'peer-to-peer · no server';
-  transportEl.title = 'Windows talk directly over WebRTC. Peers find each other through public BitTorrent trackers; the document never touches a server. Add ?relay=wss://your-host/ws to use a relay instead.';
-} else {
-  transportEl.textContent = transport.ours ? 'own relay' : `via ${transport.host}`;
-  transportEl.title = transport.ours
-    ? `This page is served by its own relay (${transport.url})`
-    : `Relay: ${transport.url} — add ?relay=wss://your-host/ws to use your own`;
-}
+const wiringEl = document.getElementById('wiring');
+
+const wiring = transport.kind === 'p2p'
+  ? {
+    kind: 'p2p',
+    short: 'P2P · no server',
+    long: 'peer-to-peer · no server',
+    title: 'Windows talk directly over WebRTC DataChannels. Peers find each other through public BitTorrent trackers, which see only an opaque room hash — the document never touches a server. Add ?relay=wss://your-host/ws to use a relay instead.',
+  }
+  : {
+    kind: 'relay',
+    short: transport.ours ? 'RELAY · own' : `RELAY · ${transport.host}`,
+    long: transport.ours ? 'own relay' : `via ${transport.host}`,
+    title: transport.ours
+      ? `Every edit travels through the relay serving this page (${transport.url}).`
+      : `Every edit travels through ${transport.url} — add ?relay=wss://your-host/ws to use your own.`,
+  };
+
+wiringEl.textContent = wiring.short;
+wiringEl.dataset.kind = wiring.kind;
+wiringEl.title = wiring.title;
+transportEl.textContent = wiring.long;
+transportEl.title = wiring.title;
+
+// There is no server to have metrics when nothing is in the path.
+const metricsLink = document.getElementById('metrics-link');
+if (transport.kind === 'p2p') metricsLink.hidden = true;
+else if (!transport.ours) metricsLink.href = new URL('/metrics', transport.url.replace(/^ws/, 'http')).href;
+
+const versionEl = document.getElementById('version');
+versionEl.textContent = `v${__APP_VERSION__}`;
+versionEl.title = `version ${__APP_VERSION__} · commit ${__APP_SHA__} · built ${__APP_BUILT__} UTC`;
 
 // A relay we do not own will not seed a fresh room for us, so the first window
 // in does it. The lowest client id wins that job: two windows opening the same

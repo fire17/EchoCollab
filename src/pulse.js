@@ -43,12 +43,17 @@ export const startPulse = (awareness, onSample) => {
     // be timed against the same send and report a round trip that never happened.
     if (sampled === seq) return;
     let best = Infinity;
+    const byPeer = new Map();
+    const elapsed = performance.now() - sentAt;
     for (const [id, state] of states) {
-      if (id !== me && state.pong?.[me] === seq) best = Math.min(best, performance.now() - sentAt);
+      if (id === me || state.pong?.[me] !== seq) continue;
+      byPeer.set(id, elapsed);
+      best = Math.min(best, elapsed);
     }
     if (best < Infinity) {
       sampled = seq;
-      onSample(best);
+      // byPeer is what the peer inspector shows; best is what the status bar shows.
+      onSample(best, byPeer);
     }
   };
 

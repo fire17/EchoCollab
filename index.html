@@ -17,6 +17,8 @@
             <h1>ECHO</h1>
             <p class="room">room <button id="room-name" class="room-btn" title="Click to switch room">—</button></p>
           </div>
+          <span id="wiring" class="wiring" title="How this page is wired">—</span>
+          <span id="version" class="version" title="Version">—</span>
         </div>
 
         <div class="peers" id="peers" aria-live="polite" aria-label="People in this room"></div>
@@ -37,6 +39,17 @@
 
       <main class="editor-wrap">
         <div id="editor" class="editor"></div>
+        <aside id="inspector" class="inspector" hidden>
+          <header class="inspector-head">
+            <i id="inspector-dot"></i>
+            <b id="inspector-name">—</b>
+            <button id="inspector-close" class="alert-btn quiet" type="button" aria-label="Close">✕</button>
+          </header>
+          <dl id="inspector-body" class="inspector-body"></dl>
+          <footer class="inspector-foot">
+            <button id="inspector-jump" class="btn" type="button">Jump to their cursor</button>
+          </footer>
+        </aside>
         <div id="toast" class="toast" role="status" aria-live="polite"></div>
       </main>
 

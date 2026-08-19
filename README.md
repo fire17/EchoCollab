@@ -39,7 +39,12 @@
 <td width="50%"><img src="assets/shot-dark.png" alt="ECHO in dark mode: three peers, two remote carets with name labels"></td>
 <td width="50%"><img src="assets/shot-light.png" alt="ECHO in light mode: the same document from another window"></td>
 </tr>
+<tr>
+<td colspan="2"><img src="assets/shot-inspector.png" alt="The peer inspector: direct WebRTC, UDP, host to host, bytes each way, round trip, cursor position"></td>
+</tr>
 </table>
+
+<div align="center"><sub>Click a peer and the demo tells on itself: which transport, direct or relayed, and what has crossed it.</sub></div>
 
 ## 🚀 Quickstart
 
@@ -63,6 +68,8 @@ Or skip all of it and open **[dxos.akeyo.io](https://dxos.akeyo.io)** twice.
 | **Offline tolerant** | Press **Go offline**, keep typing in both windows, come back. The edits merge; nothing conflicts, nothing is lost. |
 | **Local-first load** | The last known text paints from IndexedDB before the socket opens. |
 | **Honest latency** | The footer shows a real round trip, [measured over whatever transport is in use](src/pulse.js) — no special endpoint, no invented number. |
+| **Says how it is wired** | A badge in the header names the transport in use — `P2P · no server` or `RELAY · <host>` — next to the exact version and build. |
+| **Peer inspector** | Click anyone to see who they are and how you are connected: direct or relayed, protocol, candidate path, bytes each way, ICE and channel state, who dialled, round trip, and where their cursor is. |
 | **Rooms** | The URL hash is the room. Click the room name to switch, **Copy link** to invite. |
 | **Full editor** | CodeMirror 6: markdown highlighting, line numbers, folding, search, bracket matching, multiple cursors, soft wrap. |
 | **Survives restarts** | Rooms are [snapshotted to disk](server/persistence.js) and reloaded; empty rooms are evicted from memory. |

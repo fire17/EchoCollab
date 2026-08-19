@@ -84,8 +84,47 @@ export const createMesh = async ({ room, selfId, onPeer, onLeave, onStatus }) =>
 
     const peer = {
       get id() { return remote; },
+      get initiator() { return initiator; },
       send: sendBytes,
       onMessage: null,
+      /**
+       * What this connection actually is, read from the live PeerConnection —
+       * which candidate pair won, whether it is a direct hop or went through a
+       * relay, and how much has crossed it.
+       */
+      stats: async () => {
+        const out = {
+          path: 'webrtc',
+          channel: channel.readyState,
+          connection: pc.connectionState,
+          ice: pc.iceConnectionState,
+          initiator,
+        };
+        try {
+          const report = await pc.getStats();
+          let pair = null;
+          const candidates = new Map();
+          report.forEach((entry) => {
+            if (entry.type === 'local-candidate' || entry.type === 'remote-candidate') candidates.set(entry.id, entry);
+            if (entry.type === 'candidate-pair' && (entry.selected || entry.state === 'succeeded' && entry.nominated)) pair = entry;
+          });
+          if (pair) {
+            const local = candidates.get(pair.localCandidateId);
+            const remoteCandidate = candidates.get(pair.remoteCandidateId);
+            out.protocol = local?.protocol;
+            out.localType = local?.candidateType;
+            out.remoteType = remoteCandidate?.candidateType;
+            out.remoteAddress = remoteCandidate?.address;
+            out.bytesSent = pair.bytesSent;
+            out.bytesReceived = pair.bytesReceived;
+            if (typeof pair.currentRoundTripTime === 'number') out.iceRttMs = pair.currentRoundTripTime * 1000;
+            // A "relay" candidate on either end means TURN. We run none, so this
+            // should never be true — worth showing rather than assuming.
+            out.direct = local?.candidateType !== 'relay' && remoteCandidate?.candidateType !== 'relay';
+          }
+        } catch { /* stats unavailable on this connection */ }
+        return out;
+      },
       close: () => { try { channel.close(); } catch { /* gone */ } try { pc.close(); } catch { /* gone */ } },
       supersede: () => { superseded = true; peer.close(); },
     };
@@ -215,6 +254,7 @@ export const createMesh = async ({ room, selfId, onPeer, onLeave, onStatus }) =>
   return {
     get peers() { return [...peers.values()]; },
     get size() { return peers.size; },
+    get(id) { return peers.get(id); },
     broadcast: (bytes, except) => {
       for (const peer of peers.values()) if (peer !== except) peer.send(bytes);
     },
