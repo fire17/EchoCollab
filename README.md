@@ -4,6 +4,7 @@
 
 [![pages](https://github.com/fire17/EchoCollab/actions/workflows/pages.yml/badge.svg)](https://github.com/fire17/EchoCollab/actions/workflows/pages.yml)
 [![live](https://img.shields.io/badge/live-dxos.akeyo.io-4fd1c5)](https://dxos.akeyo.io)
+[![servers](https://img.shields.io/badge/servers%20required-0-4fd1c5)](#-the-part-that-should-stop-you)
 [![tests](https://img.shields.io/badge/end--to--end%20tests-9%2F9-4fd1c5)](test/smoke.js)
 [![converged](https://img.shields.io/badge/1000%20clients-byte--identical-a78bfa)](#-measured-not-claimed)
 [![p50](https://img.shields.io/badge/propagation%20p50-0.44%20ms-a78bfa)](#-measured-not-claimed)
@@ -21,16 +22,17 @@
 
 ## 🛑 The part that should stop you
 
-**Open [dxos.akeyo.io](https://dxos.akeyo.io) in two windows and type. There is no backend of ours behind that URL.**
+**Open [dxos.akeyo.io](https://dxos.akeyo.io) in two windows and type. There is no server in the path. Not ours, not anyone's.**
 
-- The page is **static** — GitHub Pages, no server we run, no bill, nothing to keep awake.
-- Two windows on one machine sync through **BroadcastChannel**, so the demo keeps working even with every network path down.
-- Across machines it borrows a **public Yjs relay**; point it at your own with `?relay=wss://your-host/ws` and nothing else changes.
-- Where a relay *does* run, it is **[144 lines](server/sync.js)** — and 1000 browsers in one room still land every keystroke in a **median 8.9 ms**, all converging on a byte-identical document.
-- Every number on this page came out of a command in this repo. The [benchmark](bench/load.js) fails the run if the clients disagree by a single character.
+- The page is **static** — GitHub Pages, nothing running, no bill, nothing to keep awake.
+- Browsers find each other through **public BitTorrent trackers** — infrastructure that already exists for everyone — then talk **directly over WebRTC**. The tracker relays two SDP blobs and never sees a keystroke. Rendezvous approach, tracker pool and wire format come from [fire17/p2p](https://github.com/fire17/p2p), which verified them live.
+- Two windows of one browser skip even that, meeting over **BroadcastChannel in [138 ms](#-measured-not-claimed)** — the demo works with the network unplugged.
+- Once connected, a round trip is **1.3 ms**, because the shortest path between two windows is a straight line.
+- A relay is still there if you want one — `npm start` runs a **[144-line](server/sync.js)** one where 1000 browsers converge byte-identical at a **median 8.9 ms** — but the published site does not use it, and nothing breaks without it.
+- Every number here came out of a command in this repo. The [benchmark](bench/load.js) fails the run if clients disagree by a single character.
 
 > [!IMPORTANT]
-> Conflict-free editing is not a hard server problem — it is a *data structure* choice. Pick a CRDT and the server stops being the thing that has to be smart, correct, or even present.
+> Conflict-free editing is not a hard server problem — it is a *data structure* choice. Pick a CRDT and the server stops being the thing that has to be smart, correct, or even present. Take that seriously enough and it stops being present at all.
 
 <table>
 <tr>
@@ -76,20 +78,31 @@ flowchart LR
     YD <--> IDB["IndexedDB<br/><i>local-first paint</i>"]
   end
   YD --> T{"transport<br/>resolved once"}
+  T -->|"published default"| P2P["peer to peer<br/><i>no server at all</i>"]
+  T -->|"same browser"| BC["BroadcastChannel<br/><i>138 ms, works offline</i>"]
   T -->|"?relay=wss://…"| OWN["your relay"]
-  T -->|"same origin"| SELF["npm start<br/><i>144-line relay</i>"]
-  T -->|"published site"| PUB["public Yjs relay"]
-  T -->|"same browser"| BC["BroadcastChannel<br/><i>works with no network</i>"]
-  OWN --> P["other windows"]
-  SELF --> P
-  PUB --> P
-  BC --> P
+  T -->|"npm start"| SELF["144-line relay"]
+  P2P -.->|"SDP only, once"| TR["public BitTorrent trackers<br/><i>never see the document</i>"]
+  P2P --> W2["other windows<br/><i>direct WebRTC, 1.3 ms</i>"]
+  BC --> W2
+  OWN --> W2
+  SELF --> W2
 
   style YD fill:#1a1030,stroke:#a78bfa,color:#e9deff
   style T fill:#0f2b2a,stroke:#4fd1c5,color:#c8fff8
-  style SELF fill:#1a1030,stroke:#e8b84a,color:#f5d67b
+  style P2P fill:#1a1030,stroke:#e8b84a,color:#f5d67b
   style BC fill:#1a1030,stroke:#e8b84a,color:#f5d67b
 ```
+
+### Peer to peer, in three files
+
+| | |
+|---|---|
+| [`src/p2p/tracker.js`](src/p2p/tracker.js) | Signalling over public WSS trackers — announce, offer, answer. The pool and wire format are p2p's, re-probed live (its third tracker had since died and was dropped). |
+| [`src/p2p/mesh.js`](src/p2p/mesh.js) | A full mesh of WebRTC DataChannels: ICE against free public STUN, 16 KB chunking, and a glare rule both sides evaluate identically. |
+| [`src/p2p/provider.js`](src/p2p/provider.js) | The same sync + awareness protocol the relay speaks, over the mesh instead of through a middle — so the editor cannot tell which transport it has. |
+
+### And a relay, if you want one
 
 Three deliberate choices, all in [`server/`](server):
 
@@ -100,6 +113,18 @@ Three deliberate choices, all in [`server/`](server):
 ## 📊 Measured, not claimed
 
 [`npm run bench`](bench/load.js) drives real headless clients through the real relay and reports the distribution, not an average. One MacBook runs the server **and** every client at once — a hostile setup, since the load generator competes with the thing it measures.
+
+### Peer to peer — the published path, driven by real browsers
+
+| | observed |
+|---|---|
+| Two windows of one browser meet | **138 ms** (BroadcastChannel, no network involved) |
+| A separate browser profile meets | **5.2 s** (tracker rendezvous + ICE, first contact) |
+| Round trip once connected | **1.3 ms** |
+| Three peers, all typing | converged on an identical document |
+| One peer offline, both typing, back online | isolated while offline, merged on return, nothing lost |
+
+### With a relay — how far one process goes
 
 | clients (one room) | connect + sync | propagation p50 | p95 | p99 | max | server RSS |
 |---|---|---|---|---|---|---|
@@ -112,7 +137,7 @@ Every run asserts all clients ended byte-identical; a fast benchmark that quietl
 npm run bench -- --clients 500 --edits 300 --gap 5
 ```
 
-In-app round trip on one machine reads **1.4–2 ms** (visible in the screenshots above). The client is 237 kB of gzipped JS plus 1.8 kB of CSS.
+The client is 237 kB of gzipped JS plus 1.8 kB of CSS.
 
 ## 🔬 How this was actually built
 
@@ -144,8 +169,13 @@ flowchart TD
 | 3 | Two peers drew the **same colour** (5 windows → 3 colours) | Five-window browser run counted distinct caret colours | Higher client id yields and repicks the least-used hue ([`src/identity.js`](src/identity.js)) |
 | 4 | Caret name labels **buried the line above** when peers stacked | Screenshot of four peers on consecutive lines | Labels fade after 2.4 s, return on hover ([`src/theme.js`](src/theme.js)) |
 | 5 | The latency readout **re-timed already-answered pings**, reporting 144 ms where the truth was 2 ms | Median stayed far above the observed best | Sample each ping exactly once ([`src/pulse.js`](src/pulse.js)) |
+| 6 | The presence row **flickered on every keystroke** | Reported by a human using it; a MutationObserver confirmed the chips were being replaced several times a second | Diff chips in place instead of rebuilding them ([`src/main.js`](src/main.js)) |
+| 7 | Peers connected, synced, then **vanished** | Three-browser run: peer count fell back to 1 with no errors | A glare rule computed from each side's own id named *different* channels on the two sides, so both closed the one the other kept. The lower id's offer now wins, which both sides evaluate identically ([`src/p2p/mesh.js`](src/p2p/mesh.js)) |
+| 8 | A dying duplicate channel **evicted a peer that was still connected** | Same run: presence dropped while the other path was healthy | Only forget a peer no path can reach ([`src/p2p/provider.js`](src/p2p/provider.js)) |
 
-Two more were found in the plan rather than the code: y-webrtc's public signalling servers are **gone** (both resolve to nothing), which killed a peer-to-peer transport before it was written; and a shared relay needs unguessable default rooms, or a stranger's link drops you into their document.
+Three more were found in the plan rather than the code: y-webrtc's public signalling servers are **gone** (both resolve to nothing), which is why signalling rides BitTorrent trackers instead; one of p2p's three vetted trackers had **died since it was vetted**, found by re-probing rather than trusting the list; and a shared room needs an unguessable default name, or a stranger's link drops you into their document.
+
+A fourth was a defect in the *test*, worth naming because it nearly sent a real one to production: two windows appeared not to converge, but the caret widgets inject invisible filler characters into the DOM, so the comparison was reading decoration as content.
 
 </details>
 
@@ -175,15 +205,18 @@ Two more were found in the plan rather than the code: y-webrtc's public signalli
 
 | | |
 |---|---|
-| Writes on your machine | `.data/` (room snapshots) and `node_modules/`, both inside the clone |
+| Writes on your machine | `.data/` (room snapshots, relay only) and `node_modules/`, both inside the clone |
 | Writes in your browser | IndexedDB, one entry per room, for local-first paint |
-| Sends anywhere | Only the document you type, to the relay in use. Presence is never persisted |
+| Sends anywhere | The document goes **directly to the other windows**. Trackers get an opaque info-hash and two SDP blobs, once |
 | Accounts, keys, telemetry | None |
 | Uninstall | `rm -rf EchoCollab` — nothing lives outside the clone |
 | Run it fully private | `npm start` and share nothing; or `PERSIST=0` to keep rooms in memory only |
 
+> [!WARNING]
+> **This is not end-to-end encrypted by us.** WebRTC gives the channel DTLS, and a tracker sees only an info-hash and SDP — but the room name is the whole access control, so treat a room link as the secret it is. [fire17/p2p](https://github.com/fire17/p2p) runs its own Noise IK handshake over exactly this kind of untrusted pipe; adopting that layer is the next step, not a shipped claim.
+
 > [!NOTE]
-> The published site uses a **public relay it does not own**. Anything typed on `dxos.akeyo.io` without `?relay=` travels through a shared server — fine for a demo, wrong for anything private. Run your own with one command.
+> Peer to peer needs the peers to be reachable. ~85–90% of WebRTC pairs connect directly via STUN; a symmetric-NAT pair on both ends may not, and there is no TURN relay here by design. Two windows of one browser always work — that path never leaves the machine.
 
 ## 🚨 When something breaks, it says so
 
@@ -198,9 +231,9 @@ relay under a live browser and restarting it.
 
 ## ✅ How the claims are enforced
 
-Every push runs [`npm test`](test/smoke.js) in CI before the site is allowed to deploy: a real relay on its own port, real clients, and the properties this README promises — fresh rooms seeded, concurrent same-position edits converged, presence appearing and disappearing, an offline window losing nothing, a room surviving its last client, rooms isolated from each other, and **a client recovering after the relay is SIGKILLed under it**.
+Every push runs [`npm test`](test/smoke.js) in CI: a real relay on its own port, real clients, and the properties this README promises — fresh rooms seeded, concurrent same-position edits converged, presence appearing and disappearing, an offline window losing nothing, a room surviving its last client, rooms isolated from each other, and **a client recovering after the relay is SIGKILLed under it**.
 
-If those fail, [dxos.akeyo.io](https://dxos.akeyo.io) does not update.
+Stated plainly: **CI covers the relay, not the peer-to-peer path.** That path is exercised by driving real browsers against live public trackers — three peers converging, an offline peer merging back, a 1.3 ms round trip — which is a manual gate here, not an automated one. Every peer-to-peer number in this README came from that harness; none of it is asserted on every push, and it would be dishonest to imply otherwise.
 
 ## ⭐ If it made you open a second window
 

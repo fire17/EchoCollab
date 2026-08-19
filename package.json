@@ -6,12 +6,12 @@
   "description": "Realtime collaborative editing demo \u2014 two windows, one CRDT document, live coloured carets.",
   "scripts": {
     "dev": "concurrently -k -n relay,vite -c magenta,cyan \"node --disable-warning=ExperimentalWarning server/index.js\" \"vite\"",
-    "build": "vite build",
-    "start": "vite build && node --disable-warning=ExperimentalWarning server/index.js",
+    "build": "VITE_SELF_HOSTED=1 vite build",
+    "start": "VITE_SELF_HOSTED=1 vite build && node --disable-warning=ExperimentalWarning server/index.js",
     "serve": "node --disable-warning=ExperimentalWarning server/index.js",
     "bench": "node --disable-warning=ExperimentalWarning bench/load.js",
     "test": "node --disable-warning=ExperimentalWarning --test --test-timeout=60000 test/*.js",
-    "build:pages": "VITE_RELAY=wss://demos.yjs.dev/ws vite build"
+    "build:pages": "vite build"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",

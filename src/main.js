@@ -8,6 +8,7 @@
  */
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
+import { P2pProvider } from './p2p/provider.js';
 import { IndexeddbPersistence } from 'y-indexeddb';
 import { yCollab, yUndoManagerKeymap, ySyncFacet } from 'y-codemirror.next';
 
@@ -60,14 +61,16 @@ const text = doc.getText('content');
 // Local-first: the last known text paints before the socket even opens.
 new IndexeddbPersistence(`echo:${room}`, doc);
 
-const provider = new WebsocketProvider(transport.url, transport.docName(room), doc, {
-  maxBackoffTime: 2500,
-  // Against our own relay the browser gossip channel is switched off, so the
-  // demo always shows the real network path. On a relay we do not own it is
-  // switched on, so two windows on one machine stay instant even if that relay
-  // is unreachable. disconnect() drops it too, so "Go offline" stays honest.
-  disableBc: transport.ours,
-});
+// Peer to peer needs no server; a relay is used only when one was asked for.
+const provider = transport.kind === 'p2p'
+  ? new P2pProvider(room, doc)
+  : new WebsocketProvider(transport.url, transport.docName(room), doc, {
+    maxBackoffTime: 2500,
+    // Against our own relay the browser gossip channel is off, so the demo
+    // always shows the real network path. disconnect() drops it either way, so
+    // "Go offline" stays honest.
+    disableBc: transport.ours,
+  });
 const { awareness } = provider;
 awareness.setLocalStateField('user', identity);
 
@@ -274,7 +277,9 @@ provider.on('connection-error', () => {
   failures += 1;
   // One dropped socket is normal; a pattern of them is worth interrupting for.
   if (failures >= 2 && !offline) {
-    showAlert(`Can't reach the relay at ${transport.host} — still retrying. Your edits are safe locally and will merge when it returns.`, reconnect);
+    showAlert(transport.kind === 'p2p'
+      ? 'Trouble reaching other windows over the peer-to-peer channel — still trying. Your edits are safe locally and will merge when a peer appears.'
+      : `Can't reach the relay at ${transport.host} — still retrying. Your edits are safe locally and will merge when it returns.`, reconnect);
   }
 });
 provider.on('status', ({ status }) => {
@@ -297,6 +302,14 @@ const setConn = (state) => {
 
 provider.on('status', ({ status }) => setConn(status));
 provider.on('sync', (synced) => { if (synced && !offline) setConn('synced'); });
+if (transport.kind === 'p2p') {
+  // Peer to peer has nothing to be "connected" to until someone else shows up.
+  provider.on('peers', ({ peers }) => {
+    if (offline) return;
+    setConn(peers > 0 ? 'connected' : 'waiting for peers');
+  });
+  provider.on('status', ({ status }) => { if (!offline && status === 'connected') setConn('connected'); });
+}
 provider.on('connection-close', () => setConn('disconnected'));
 
 const updateCounts = () => {
@@ -333,24 +346,31 @@ startPulse(awareness, (rtt) => {
   latencyEl.textContent = `${median.toFixed(1)} ms rtt · best ${bestRtt.toFixed(1)}`;
 });
 
-document.getElementById('transport').textContent = transport.ours
-  ? 'own relay'
-  : `via ${transport.host}`;
-document.getElementById('transport').title = transport.ours
-  ? `This page is served by its own relay (${transport.url})`
-  : `Shared public relay: ${transport.url} — add ?relay=wss://your-host/ws to use your own`;
+const transportEl = document.getElementById('transport');
+if (transport.kind === 'p2p') {
+  transportEl.textContent = 'peer-to-peer · no server';
+  transportEl.title = 'Windows talk directly over WebRTC. Peers find each other through public BitTorrent trackers; the document never touches a server. Add ?relay=wss://your-host/ws to use a relay instead.';
+} else {
+  transportEl.textContent = transport.ours ? 'own relay' : `via ${transport.host}`;
+  transportEl.title = transport.ours
+    ? `This page is served by its own relay (${transport.url})`
+    : `Relay: ${transport.url} — add ?relay=wss://your-host/ws to use your own`;
+}
 
 // A relay we do not own will not seed a fresh room for us, so the first window
 // in does it. The lowest client id wins that job: two windows opening the same
 // empty room at once would otherwise both insert the welcome text.
-if (!transport.ours) {
+// Nobody seeds a fresh room for us unless our own relay is serving it: on a
+// shared relay, or peer to peer where there is no server at all, the first
+// window in does it.
+if (!transport.ours || transport.kind === 'p2p') {
   provider.once('sync', () => {
     setTimeout(() => {
       if (text.length > 0) return;
       const ids = [...awareness.getStates().keys()];
       if (Math.min(...ids) !== awareness.clientID) return;
       text.insert(0, SEED);
-    }, 400);
+    }, transport.kind === 'p2p' ? 1500 : 400);
   });
 }
 
